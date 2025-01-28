@@ -1,5 +1,5 @@
 {
-    "name": "MIL dev container",
+    "name": "euler lean dev container",
   
     "build": {
       "dockerfile": "Dockerfile"
@@ -11,6 +11,8 @@
       "vscode" : {
         "extensions" : [ "leanprover.lean4" ]
       }
+    },
+    "features": {
+        "ghcr.io/devcontainers-extra/features/lean-asdf:2": {}
     }
   }
-  
