@@ -1,9 +1,8 @@
-import Mathlib.Tactic
-import Std
+import Init.Data.Array.Basic
 import Mathlib.Data.Nat.Prime.Basic
 import Mathlib.NumberTheory.SmoothNumbers
-import Init.Data.Array.Basic
--- import Mathlib
+import Mathlib.Tactic
+import Std
 
 -- Project euler problem 10: https://projecteuler.net/problem=10
 
