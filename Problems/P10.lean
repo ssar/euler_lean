@@ -3,7 +3,7 @@ import Std
 import Mathlib.Data.Nat.Prime.Basic
 import Mathlib.NumberTheory.SmoothNumbers
 import Init.Data.Array.Basic
-import Mathlib
+-- import Mathlib
 
 -- Project euler problem 10: https://projecteuler.net/problem=10
 
@@ -49,16 +49,14 @@ def factorSieve (n : Nat) : Array Nat :=
   | 1 => #[2, 1]
   | n + 2 => ((calculateFactors (Array.mkArray (n + 3) 0) 2).set 1 1).set 0 2
 
-@[simp] theorem size_factorSieve (n : Nat) :
-  (factorSieve n).size = n + 1 := by
-    unfold factorSieve
-    split; all_goals simp
+@[simp] theorem size_factorSieve (n : Nat) : (factorSieve n).size = n + 1 := by
+  unfold factorSieve
+  split; all_goals simp
 
 def sieve_isPrime (arr : Array Nat) (n: Nat) (_: n < arr.size := by get_elem_tactic): Bool :=
   2 ≤ n ∧ arr[n] = n
 
-def S_calc (arr : Array Nat) (n acc : Nat := 0)
-        (_: n < arr.size := by get_elem_tactic) : Nat :=
+def S_calc (arr : Array Nat) (n acc : Nat := 0) (_: n < arr.size := by get_elem_tactic) : Nat :=
   if n = 0 then acc
   else if sieve_isPrime arr n then
     S_calc arr (n - 1) (acc + n)
@@ -80,10 +78,10 @@ theorem values_mapMultiples {α : Type} (arr: Array α ) (position p: Nat) (f : 
       f arr[getIdx]
     else
       arr[getIdx] := by
-  unfold mapMultiples
   induction arr, position, p, f using mapMultiples.induct with
-  | case1 arr position p f h => simp[h, not_lt_of_ge]
+  | case1 arr position p f h => unfold mapMultiples; simp[h, not_lt_of_ge]
   | case2 arr position p f h1 h2 =>
+      unfold mapMultiples
       have posGtIdx: getIdx < position := by linarith
       simp_arith [h1, h2, posGtIdx, not_le_of_lt]
   | case3 arr position p f h1 h2 ih =>
@@ -112,11 +110,7 @@ theorem values_mapMultiples {α : Type} (arr: Array α ) (position p: Nat) (f : 
             rwa [← Nat.sub_le_sub_iff_right position_le_getIdx,
                   Nat.add_sub_cancel_left] at position_le_getIdx'
           simp[position_le_getIdx]
-          intro position_le_getIdx'
-          have h: position ≤ getIdx :=
-          calc position ≤ position + p := by simp
-            _ ≤ getIdx := by assumption
-          contradiction
+          omega
         · assumption
         assumption
 
@@ -148,10 +142,10 @@ lemma minFacBelowDiffOnPrimes (n below) (belowValid: 0 ≠ below) (nValid: 1 < n
   apply minFacBelowOnDiff at h
   unfold minFacBelow at h
   split at h
-  rw [← h]
-  apply Nat.minFac_prime
-  linarith
-  contradiction
+  · rw [← h]
+    apply Nat.minFac_prime
+    linarith
+  · contradiction
 
 lemma minFacBelowDiffOnPrimes' (n below) (belowValid: 0 ≠ below) (nValid: 1 < n):
   ¬ below.Prime -> minFacBelow n below = minFacBelow n (below + 1) := by
@@ -208,7 +202,7 @@ lemma values_calculateFactors (arr: Array Nat) (position: Nat)(posValid : 1 < po
       rw[values_mapMultiples]
       · have posValid': 0 < position := by linarith
         simp[posValid']
-        by_cases minFacP: i.minFac = position -- should we split on position ∣ i - position ?
+        by_cases minFacP: i.minFac = position
         · subst position
           have posdvd: i.minFac ∣ i - i.minFac := by
            apply Nat.dvd_sub'
