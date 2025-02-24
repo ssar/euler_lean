@@ -14,9 +14,10 @@ def S (n: Nat) := ∑ p ∈ Nat.primesBelow n, p
 
 -- Maps all elements with index position + k * p in the array arr.
 def mapMultiples {α : Type} (arr : Array α ) (position p : Nat) (f : α → α) : Array α :=
-  if p ≤ 0 then arr
-  else if h: arr.size ≤ position then
+  if h: arr.size ≤ position then
     arr
+  else if p = 0 then
+    arr.set position (f arr[position])
   else
     mapMultiples (arr.set position (f arr[position])) (position + p) p f
 termination_by arr.size - position
@@ -26,16 +27,21 @@ termination_by arr.size - position
     induction arr, position, p, f using mapMultiples.induct with
     | _  => unfold mapMultiples; simp[*]
 
-def firstNonZero (a b: Nat) : Nat := if a = 0 then b else a
+def calculateFactors_idxValid {a b: Nat} (h: ¬ b ≤ a * a):
+    a < b := by
+  apply lt_of_not_le at h
+  calc a ≤ a * a := Nat.le_mul_self a
+    _ < b := h
 
 def calculateFactors (arr: Array Nat) (position: Nat) : Array Nat :=
-  if h: position ≥ arr.size then
+  if h: position * position ≥ arr.size then
     arr
-  else if arr[position] = 0 then
-    calculateFactors (mapMultiples arr position position (firstNonZero . position)) (position + 1)
+  else if arr[position]'(calculateFactors_idxValid h) = position then
+    calculateFactors (mapMultiples arr (position * position) position (min position)) (position + 1)
   else
     calculateFactors arr (position + 1)
 termination_by arr.size - position
+decreasing_by all_goals apply calculateFactors_idxValid at h; simp; omega
 
 @[simp] theorem size_calculateFactors (arr: Array Nat) (position: Nat):
   (calculateFactors arr position).size = arr.size := by
@@ -46,7 +52,7 @@ def factorSieve (n : Nat) : Array Nat :=
   match n with
   | 0 => #[2]
   | 1 => #[2, 1]
-  | n + 2 => ((calculateFactors (Array.mkArray (n + 3) 0) 2).set 1 1).set 0 2
+  | n + 2 => ((calculateFactors (Array.range (n + 3)) 2).set 0 2).set 1 1
 
 @[simp] theorem size_factorSieve (n : Nat) : (factorSieve n).size = n + 1 := by
   unfold factorSieve
@@ -73,23 +79,27 @@ def S_impl (n : Nat): Nat := S_calc (factorSieve (n - 1)) (n - 1)
 theorem values_mapMultiples {α : Type} (arr: Array α ) (position p: Nat) (f : α → α) (getIdx : Nat)
     (idxValid : getIdx < arr.size):
   (mapMultiples arr position p f)[getIdx]'(by simp[idxValid]) =
-    if(0 < p ∧ position ≤ getIdx ∧ p ∣ (getIdx - position)) then
+    if(position ≤ getIdx ∧ p ∣ (getIdx - position)) then
       f arr[getIdx]
     else
       arr[getIdx] := by
   induction arr, position, p, f using mapMultiples.induct with
-  | case1 arr position p f h => unfold mapMultiples; simp[h, not_lt_of_ge]
-  | case2 arr position p f h1 h2 =>
+  | case1 arr position p f h1 =>
       unfold mapMultiples
       have posGtIdx: getIdx < position := by linarith
-      simp_arith [h1, h2, posGtIdx, not_le_of_lt]
+      simp_arith [h1, posGtIdx, not_le_of_lt]
+  | case2 arr position f h =>
+      unfold mapMultiples
+      simp[h]
+      simp_rw[Nat.sub_eq_zero_iff_le, ← Nat.le_antisymm_iff]
+      rw[Array.get_set]
+      split; simp[*]; rfl
   | case3 arr position p f h1 h2 ih =>
       unfold mapMultiples
-      have h1': 0 < p := by exact lt_of_not_le h1
-      simp [h1, h2, h1', idxValid] at ih ⊢
+      simp [h1, h2, idxValid] at ih ⊢
       rw [ih]
       by_cases position_idx: position = getIdx
-      · simp [position_idx, lt_of_not_ge, h1]
+      · simp [position_idx, lt_of_not_ge, h2]
       · rw [Array.get_set_ne arr]
         · by_cases position_le_getIdx: position ≤ getIdx
           · have position_lt_getIdx: position < getIdx := by
@@ -114,7 +124,7 @@ theorem values_mapMultiples {α : Type} (arr: Array α ) (position p: Nat) (f : 
         assumption
 
 private def minFacBelow (n below: Nat) : Nat :=
-  if Nat.minFac n < below then Nat.minFac n else 0
+  if Nat.minFac n < below then Nat.minFac n else n
 
 private def containsMinFacsBelow (arr: Array Nat) (below: Nat) :=
   ∀ (i : Nat) (h: i < arr.size ∧ 1 < i), arr[i] = minFacBelow i below
@@ -144,7 +154,10 @@ lemma minFacBelowDiffOnPrimes (n below) (belowValid: 0 ≠ below) (nValid: 1 < n
   · rw [← h]
     apply Nat.minFac_prime
     linarith
-  · contradiction
+  · subst h
+    have nge: n.minFac ≤ n := by apply Nat.minFac_le; linarith
+    have ngt: n.minFac < n + 1 := by linarith
+    contradiction
 
 lemma minFacBelowDiffOnPrimes' (n below) (belowValid: 0 ≠ below) (nValid: 1 < n):
   ¬ below.Prime -> minFacBelow n below = minFacBelow n (below + 1) := by
@@ -158,108 +171,172 @@ lemma containsMinFacsBelow_onPrimes (arr: Array Nat) (below: Nat) (belowValid: 0
   apply minFacBelowDiffOnPrimes' _ _ belowValid h.2
   assumption
 
+lemma containsMinFacsBelow_prime {arr: Array Nat} {below p: Nat}
+      (c: containsMinFacsBelow arr below) (pp: p.Prime) (pv: p < arr.size) :
+    arr[p] = p := by
+  unfold containsMinFacsBelow at c
+  have pv': p < arr.size ∧ 1 < p := by constructor; assumption; apply Nat.Prime.one_lt; assumption
+  specialize c p pv'
+  rw[c]
+  unfold minFacBelow
+  simp[Nat.Prime.minFac_eq pp]
+
+lemma containsMinFacsBelow_bSquared (arr: Array Nat) (below: Nat) :
+   containsMinFacsBelow arr below →
+       ∀ (i : Nat) (h1: i < arr.size) (_: i < (below^2)) (_: 1 < i), arr[i] = i.minFac := by
+    intro h i h1 h2 h3
+    by_cases iPrime: i.Prime
+    · symm; rw[Nat.Prime.minFac_eq iPrime]
+      symm; apply containsMinFacsBelow_prime h iPrime
+    · case neg =>
+      unfold containsMinFacsBelow at h
+      have h': i < arr.size ∧ 1 < i := by omega
+      specialize h i h'
+      unfold minFacBelow at h
+      rw[h]
+      have ip: 0 < i := by linarith
+      have ib: i.minFac ^ 2 < below ^ 2 :=
+      calc i.minFac ^ 2 ≤ i := Nat.minFac_sq_le_self ip iPrime
+        _ < below ^ 2 := h2
+      have imb: i.minFac < below := by apply lt_of_pow_lt_pow_left₀ 2; simp; assumption
+      simp[imb]
+
+lemma containsMinFacsBelow_prime_bSquared {arr: Array Nat} {below: Nat}
+   (c: containsMinFacsBelow arr below) (i : Nat) (h1: i < arr.size) (h2: i < below ^2) (il: 1 < i):
+       arr[i] = i ↔ i.Prime := by
+  rw[Nat.prime_def_minFac]
+  constructor
+  · intro ie
+    constructor; linarith
+    nth_rw 2 [←ie]
+    symm; apply containsMinFacsBelow_bSquared arr below; all_goals assumption
+  · intro im
+    nth_rw 2 [← im.2]
+    apply containsMinFacsBelow_bSquared arr below; all_goals assumption
+
+lemma containsMinFacsBelow_ge_iff (arr: Array Nat) (below: Nat) (as: arr.size ≤ below^2) :
+    containsMinFacsBelow arr below ↔ ∀ (i : Nat) (h: i < arr.size ∧ 1 < i), arr[i] = i.minFac := by
+    constructor
+    · intro c i h
+      apply containsMinFacsBelow_bSquared arr below
+      assumption
+      calc i < arr.size := h.1
+        _ ≤ below^2 := as
+      exact h.2
+    · intro e i; specialize e i
+      unfold minFacBelow
+      by_cases ip: i.Prime
+      · rw[Nat.Prime.minFac_eq ip] at e ⊢
+        simpa
+      · intro h; specialize e h
+        have ib: i.minFac^2 < below^2
+        calc i.minFac^2 ≤ i := by apply Nat.minFac_sq_le_self; linarith; exact ip
+          _ < arr.size := h.1
+          _ ≤ below ^ 2 := as
+        have ib': i.minFac < below := by apply lt_of_pow_lt_pow_left₀ 2 _ ib; linarith
+        simp[ib', e]
+
 lemma values_calculateFactors (arr: Array Nat) (position: Nat)(posValid : 1 < position)
      (arrValid: containsMinFacsBelow arr position):
      containsMinFacsBelow (calculateFactors arr position) arr.size := by
     induction arr, position using calculateFactors.induct with
     | case1 arr position h =>
+      rw [containsMinFacsBelow_ge_iff]
       unfold calculateFactors; simp[h]
-      unfold containsMinFacsBelow at arrValid ⊢
-      intro i iValid; specialize arrValid i iValid
-      unfold minFacBelow at arrValid ⊢
-      have eoa: i.minFac < arr.size :=
-        have iPos: 0 < i := by linarith
-        calc i.minFac ≤ i := Nat.minFac_le iPos
-          _ < arr.size := iValid.1
-      have eoa': i.minFac < position := by linarith
-      simp[eoa, eoa'] at arrValid ⊢
+      rw [containsMinFacsBelow_ge_iff] at arrValid
       assumption
+      linarith
+      simp
+      rw[pow_two]
+      exact Nat.le_mul_self arr.size
     | case2 arr position h1 h2 ih =>
       have positionPrime: position.Prime := by
-        have posValid': position < arr.size ∧ 1 < position := by simp [lt_of_not_le h1, posValid]
-        specialize arrValid position posValid'
-        unfold minFacBelow at arrValid
-        rw [h2] at arrValid
-        split at arrValid
-        · case isTrue h =>
-            apply ne_of_lt (Nat.minFac_pos position) at arrValid
-            contradiction
-        · case isFalse h =>
-            have eq: position.minFac = position := by
-              have posPos: 0 < position := by linarith
-              apply eq_of_le_of_le (Nat.minFac_le posPos)
-              linarith
-            rw [← eq]
-            apply Nat.minFac_prime
-            symm
-            apply ne_of_lt posValid
+        rw[← containsMinFacsBelow_prime_bSquared arrValid _ _ _ posValid]
+        assumption
+        apply lt_self_pow₀ posValid
+        linarith
       unfold calculateFactors; simp[h1, h2] at ih arrValid ⊢
+      unfold containsMinFacsBelow
       apply ih; linarith
-      unfold containsMinFacsBelow at arrValid ⊢
       intro i iValid; simp at iValid
+      rw[values_mapMultiples _ _ _ _ _ iValid.1]
+      by_cases possq: i < position^2
+      · apply containsMinFacsBelow_bSquared at arrValid -- TODO: this should be shorter.
+        specialize arrValid i iValid.1 possq iValid.2
+        have possq': ¬ position * position ≤ i := by linarith
+        simp[possq']
+        unfold minFacBelow
+        split
+        rw[arrValid]
+        · case _ h =>
+          by_cases iPrime: i.Prime
+          · rw[arrValid]; exact Nat.Prime.minFac_eq iPrime
+          · have ip: 0 < i := by linarith
+            have cn: i.minFac^2 < position ^ 2
+            calc i.minFac^2 ≤ i := Nat.minFac_sq_le_self ip iPrime
+              _ < position ^ 2 := possq
+            have cn': i.minFac < position := by apply lt_of_pow_lt_pow_left₀ 2 _ cn; linarith;
+            linarith
+      unfold containsMinFacsBelow at arrValid
       specialize arrValid i iValid
-      rw[values_mapMultiples]
-      · have posValid': 0 < position := by linarith
-        simp[posValid']
-        by_cases minFacP: i.minFac = position
-        · subst position
-          have posdvd: i.minFac ∣ i - i.minFac := by
-           apply Nat.dvd_sub'
-           apply Nat.minFac_dvd
-           simp
-          have posLeI: i.minFac ≤ i := by apply Nat.minFac_le; linarith
-          unfold firstNonZero
+      by_cases minFacP: i.minFac = position
+      · subst position
+        have posdvd: i.minFac ∣ i - i.minFac^2 := by
+          apply Nat.dvd_sub'
+          apply Nat.minFac_dvd
+          rw[pow_two]
+          simp
+        have posLeI: i.minFac ≤ i := by apply Nat.minFac_le; linarith
+        rw[arrValid]
+        unfold minFacBelow
+        rw[←pow_two]
+        have possq': i.minFac^2 ≤ i := by linarith
+        simp[posLeI, posdvd, possq']
+      · by_cases positionDvd: position ∣ i
+        · have positionDvd': position ∣ i - position * position := by
+            apply Nat.dvd_sub'; assumption; simp
+          have posLeI: position * position ≤ i := by
+            rw[←pow_two]
+            linarith
+          simp[posLeI, positionDvd']
+          have minFacLtPos: i.minFac < position := by
+            rw[Nat.lt_iff_le_and_ne]
+            simp[minFacP]
+            apply Nat.minFac_le_of_dvd; linarith
+            assumption
+          have minFacLtPos': i.minFac < position + 1 := by linarith
           rw[arrValid]
           unfold minFacBelow
-          simp[posLeI, posdvd]
-        · by_cases positionDvd: position ∣ i
-          · have positionDvd': position ∣ i - position := by
-              apply Nat.dvd_sub'; assumption; apply dvd_refl
-            have posLeI: position ≤ i := by apply Nat.le_of_dvd; linarith[iValid.1]; assumption
-            simp[posLeI, positionDvd']
-            have minFacLtPos: i.minFac < position := by
-              rw[Nat.lt_iff_le_and_ne]
-              simp[minFacP]
-              apply Nat.minFac_le_of_dvd; linarith
-              assumption
-            have minFacLtPos': i.minFac < position + 1 := by linarith
-            rw[arrValid]
-            unfold minFacBelow
-            simp[minFacLtPos, minFacLtPos']
-            unfold firstNonZero
-            have minFacNonZero: i.minFac ≠ 0 := by linarith[Nat.minFac_pos i]
-            simp[minFacNonZero]
-          · have positionDvd': position ≤ i -> ¬ position ∣ i - position := by
-              intro p
-              rw[← Nat.dvd_add_self_right]
-              rwa[Nat.sub_add_cancel]; assumption
-            have positionDvd'': ¬ (position ≤ i ∧ position ∣ i - position) := by
-              rw[not_and]
-              intro p
-              rw[← Nat.dvd_add_self_right]
-              rwa[Nat.sub_add_cancel]; assumption
-            simp[positionDvd'']
-            rw[arrValid]
-            unfold minFacBelow
-            by_cases mfp: i.minFac < position
-            · have mfp': i.minFac < position + 1 := by linarith
-              simp[mfp, mfp']
-            · have mfp': ¬ i.minFac < position + 1 := by
-                rw[Nat.lt_add_one_iff_lt_or_eq]
-                simp[mfp, minFacP]
-              simp[mfp, mfp']
+          simp[minFacLtPos, minFacLtPos']
+          have minFacNonZero: i.minFac ≠ 0 := by linarith[Nat.minFac_pos i]
+          simp[minFacNonZero]
+          linarith
+        · have positionDvd': position ≤ i -> ¬ position ∣ i - position := by
+            intro p
+            rw[← Nat.dvd_add_self_right]
+            rwa[Nat.sub_add_cancel]; assumption
+          have positionDvd'': ¬ (position * position ≤ i ∧ position ∣ i - position * position) := by
+            rw[not_and]
+            intro p
+            have posdvd: position ∣ position * position := Nat.dvd_mul_right position position
+            rw[← Nat.dvd_add_left posdvd]
+            rw[Nat.sub_add_cancel p]
+            assumption
+          simp[positionDvd'']
+          rw[arrValid]
+          unfold minFacBelow
+          by_cases mfp: i.minFac < position
+          · have mfp': i.minFac < position + 1 := by linarith
+            simp[mfp, mfp']
+          · have mfp': ¬ i.minFac < position + 1 := by
+              rw[Nat.lt_add_one_iff_lt_or_eq]
+              simp[mfp, minFacP]
+            simp[mfp, mfp']
     | case3 arr position h1 h2 ih =>
       have positionPrime: ¬position.Prime := by
-        have posPos : 0 < position := by linarith
-        have posValid': position < arr.size ∧ 1 < position := by simp [lt_of_not_le h1, posValid]
-        specialize arrValid position posValid'
-        unfold minFacBelow at arrValid
-        split at arrValid
-        · case isTrue h =>
-            have h': position.minFac ≠ position := by linarith
-            rw [Nat.prime_def_minFac]
-            simp [h']
-        · case isFalse h => contradiction
+        rw[← containsMinFacsBelow_prime_bSquared arrValid _ _ _ posValid]
+        assumption
+        apply lt_self_pow₀ posValid; linarith
       unfold calculateFactors
       simp [h1, h2]
       apply ih; linarith
@@ -367,6 +444,8 @@ theorem S_impl_implements_S (n : Nat) : S n = S_impl n := by
     · simp only [isPrime, ↓reduceIte]
       simp[S_impl_succ, isPrime, Nat.add]
       linarith
+
+#print axioms S_impl_implements_S
 
 /-! ### Lemmas that ended up unused. -/
 
