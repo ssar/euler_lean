@@ -10,6 +10,10 @@ import Std
 
 def S (n: Nat) := ∑ p ∈ Nat.primesBelow n, p
 
+/-! ### tweaks to get_elem_tactic_trivial for array access -/
+macro_rules | `(tactic| get_elem_tactic_trivial) => `(tactic| simp[*];omega)
+macro_rules | `(tactic| get_elem_tactic_trivial) => `(tactic| simp[*])
+
 /-! ### Implementation of solution -/
 
 -- Maps all elements with index position + k * p in the array arr.
@@ -34,9 +38,10 @@ def calculateFactors_idxValid {a b: Nat} (h: ¬ b ≤ a * a):
     _ < b := h
 
 def calculateFactors (arr: Array Nat) (position: Nat) : Array Nat :=
+  have _: position ≤ position * position := Nat.le_mul_self position -- needed for omega
   if h: position * position ≥ arr.size then
     arr
-  else if arr[position]'(calculateFactors_idxValid h) = position then
+  else if arr[position] = position then
     calculateFactors (mapMultiples arr (position * position) position (min position)) (position + 1)
   else
     calculateFactors arr (position + 1)
@@ -72,13 +77,14 @@ termination_by n
 def S_impl (n : Nat): Nat := S_calc (factorSieve (n - 1)) (n - 1)
 
 #eval S_impl 200 -- expect 4227
--- #eval S_impl 2000000 -- 142913828922
+#eval S 200 -- S creates stack overflow between 200000 and 2000000
+-- #eval S_impl 20000000 -- expect 142913828922
 
 /-! ### Proof of correctness -/
 
 theorem values_mapMultiples {α : Type} (arr: Array α ) (position p: Nat) (f : α → α) (getIdx : Nat)
     (idxValid : getIdx < arr.size):
-  (mapMultiples arr position p f)[getIdx]'(by simp[idxValid]) =
+  (mapMultiples arr position p f)[getIdx] =
     if(position ≤ getIdx ∧ p ∣ (getIdx - position)) then
       f arr[getIdx]
     else
@@ -240,7 +246,7 @@ lemma values_calculateFactors (arr: Array Nat) (position: Nat)(posValid : 1 < po
      (arrValid: containsMinFacsBelow arr position):
      containsMinFacsBelow (calculateFactors arr position) arr.size := by
     induction arr, position using calculateFactors.induct with
-    | case1 arr position h =>
+    | case1 arr position sq h =>
       rw [containsMinFacsBelow_ge_iff]
       unfold calculateFactors; simp[h]
       rw [containsMinFacsBelow_ge_iff] at arrValid
@@ -249,7 +255,7 @@ lemma values_calculateFactors (arr: Array Nat) (position: Nat)(posValid : 1 < po
       simp
       rw[pow_two]
       exact Nat.le_mul_self arr.size
-    | case2 arr position h1 h2 ih =>
+    | case2 arr position sq h1 h2 ih =>
       have positionPrime: position.Prime := by
         rw[← containsMinFacsBelow_prime_bSquared arrValid _ _ _ posValid]
         assumption
@@ -261,7 +267,8 @@ lemma values_calculateFactors (arr: Array Nat) (position: Nat)(posValid : 1 < po
       intro i iValid; simp at iValid
       rw[values_mapMultiples _ _ _ _ _ iValid.1]
       by_cases possq: i < position^2
-      · apply containsMinFacsBelow_bSquared at arrValid -- TODO: this should be shorter.
+      · -- TODO: Not sure why the proof of this part is so long.
+        apply containsMinFacsBelow_bSquared at arrValid
         specialize arrValid i iValid.1 possq iValid.2
         have possq': ¬ position * position ≤ i := by linarith
         simp[possq']
@@ -332,7 +339,7 @@ lemma values_calculateFactors (arr: Array Nat) (position: Nat)(posValid : 1 < po
               rw[Nat.lt_add_one_iff_lt_or_eq]
               simp[mfp, minFacP]
             simp[mfp, mfp']
-    | case3 arr position h1 h2 ih =>
+    | case3 arr position sq h1 h2 ih =>
       have positionPrime: ¬position.Prime := by
         rw[← containsMinFacsBelow_prime_bSquared arrValid _ _ _ posValid]
         assumption
@@ -344,7 +351,7 @@ lemma values_calculateFactors (arr: Array Nat) (position: Nat)(posValid : 1 < po
       assumption
 
 theorem values_factorSieve (n : Nat):
-  ∀ (i : Nat) (h: i < n + 1), (factorSieve n)[i]'(by simp[h]) = i.minFac := by
+  ∀ (i : Nat) (h: i < n + 1), (factorSieve n)[i] = i.minFac := by
   unfold factorSieve
   intro i h
   match n with
