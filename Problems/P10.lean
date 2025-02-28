@@ -9,12 +9,18 @@ import Std
 /-! ### Function to calculate -/
 
 def S (n: Nat) := ∑ p ∈ Nat.primesBelow n, p
+-- Problem statement: calculate S
+-- Lean can calculate S but starts generating a stack overflow somewhere around 600000
 
 /-! ### tweaks to get_elem_tactic_trivial for array access -/
 macro_rules | `(tactic| get_elem_tactic_trivial) => `(tactic| simp[*];omega)
 macro_rules | `(tactic| get_elem_tactic_trivial) => `(tactic| simp[*])
 
 /-! ### Implementation of solution -/
+
+-- Strategy: Define s_impl n:
+-- 1. Generate an Array arr with arr[i] = i.minFac using a modified sieve of Erastothenes
+-- 2. Use the fact that for 2 ≤ i, i.minFac = i ↔ i.Prime to find and sum the primes below n.
 
 -- Maps all elements with index position + k * p in the array arr.
 def mapMultiples {α : Type} (arr : Array α ) (position p : Nat) (f : α → α) : Array α :=
@@ -38,7 +44,7 @@ def calculateFactors_idxValid {a b: Nat} (h: ¬ b ≤ a * a):
     _ < b := h
 
 def calculateFactors (arr: Array Nat) (position: Nat) : Array Nat :=
-  have _: position ≤ position * position := Nat.le_mul_self position -- needed for omega
+  have := Nat.le_mul_self position -- needed for omega to resolve array access.
   if h: position * position ≥ arr.size then
     arr
   else if arr[position] = position then
@@ -77,8 +83,8 @@ termination_by n
 def S_impl (n : Nat): Nat := S_calc (factorSieve (n - 1)) (n - 1)
 
 #eval S_impl 200 -- expect 4227
-#eval S 200 -- S creates stack overflow between 200000 and 2000000
--- #eval S_impl 20000000 -- expect 142913828922
+#eval S 200
+#eval S_impl 2000000
 
 /-! ### Proof of correctness -/
 
